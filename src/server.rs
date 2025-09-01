@@ -1,7 +1,10 @@
 use std::{
     collections::HashMap,
     net::SocketAddr,
-    sync::{Arc, Mutex, RwLock, Weak},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex, RwLock, Weak
+    },
     time::Duration,
 };
 
@@ -80,7 +83,7 @@ type ConnMap = HashMap<i32, ConnInner>;
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 const CONFIG_SYNC_INTERVAL_SECS: f32 = 0.3;
-
+static HAS_ACTIVE_SESSION: AtomicBool = AtomicBool::new(false);
 lazy_static::lazy_static! {
     pub static ref CHILD_PROCESS: Childs = Default::default();
     // A client server used to provide local services(audio, video, clipboard, etc.)
@@ -174,6 +177,12 @@ pub async fn create_tcp_connection(
     addr: SocketAddr,
     secure: bool,
 ) -> ResultType<()> {
+    if HAS_ACTIVE_SESSION.load(Ordering::SeqCst) {
+        log::warn!("Reject new connection from {}, session already active", addr);
+        let _ = stream.shutdown().ok();
+        return Ok(()); // 拒绝新的连接
+    }
+    HAS_ACTIVE_SESSION.store(true, Ordering::SeqCst);
     let mut stream = stream;
     let id = server.write().unwrap().get_new_id();
     let (sk, pk) = Config::get_key_pair();
@@ -241,6 +250,8 @@ pub async fn create_tcp_connection(
         log::info!("wake up macos");
     }
     Connection::start(addr, stream, id, Arc::downgrade(&server)).await;
+    // 会话结束，释放占用
+    HAS_ACTIVE_SESSION.store(false, Ordering::SeqCst);
     Ok(())
 }
 
