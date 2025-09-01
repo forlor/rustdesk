@@ -181,7 +181,7 @@ pub async fn create_tcp_connection(
     if HAS_ACTIVE_SESSION.load(Ordering::SeqCst) {
         log::warn!("Reject new connection from {}, session already active", addr);
         let _ = stream.shutdown().ok();
-        return Ok(()); // 拒绝新的连接
+        bail!("Reject new connection");
     }
     HAS_ACTIVE_SESSION.store(true, Ordering::SeqCst);
     let id = server.write().unwrap().get_new_id();
