@@ -40,6 +40,7 @@ lazy_static::lazy_static! {
 }
 static SHOULD_EXIT: AtomicBool = AtomicBool::new(false);
 static MANUAL_RESTARTED: AtomicBool = AtomicBool::new(false);
+static HAS_ACTIVE_SESSION: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone)]
 pub struct RendezvousMediator {
@@ -765,6 +766,12 @@ async fn direct_server(server: ServerPtr) {
                 continue;
             }
             if let Ok(Ok((stream, addr))) = hbb_common::timeout(1000, l.accept()).await {
+                if HAS_ACTIVE_SESSION.load(Ordering::SeqCst) {
+                    log::warn!("Reject new direct connection from {}, session already active", addr);
+                    let _ = stream.shutdown().ok();
+                    continue; // 拒绝新的连接
+                }
+                HAS_ACTIVE_SESSION.store(true, Ordering::SeqCst);
                 stream.set_nodelay(true).ok();
                 log::info!("direct access from {}", addr);
                 let local_addr = stream
@@ -781,6 +788,7 @@ async fn direct_server(server: ServerPtr) {
                         )
                         .await
                     );
+                    HAS_ACTIVE_SESSION.store(false, Ordering::SeqCst);
                 });
             } else {
                 sleep(0.1).await;
