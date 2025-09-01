@@ -180,7 +180,6 @@ pub async fn create_tcp_connection(
     let mut stream = stream;
     if HAS_ACTIVE_SESSION.load(Ordering::SeqCst) {
         log::warn!("Reject new connection from {}, session already active", addr);
-        let _ = stream.shutdown().ok();
         bail!("Reject new connection");
     }
     HAS_ACTIVE_SESSION.store(true, Ordering::SeqCst);
